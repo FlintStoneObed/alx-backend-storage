@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
+"""
+This module have a utility function that list all document
+"""
+import pymongo
+
 
 def list_all(mongo_collection):
     """
-    Lists all documents in a collection.
-
-    Args:
-        mongo_collection (pymongo.collection.Collection): The pymongo collection object.
-
-    Returns:
-        list: A list of all documents in the collection. Returns an empty list if no documents are found.
+    list all collections
     """
+    if not mongo_collection:
+        return []
     return list(mongo_collection.find())

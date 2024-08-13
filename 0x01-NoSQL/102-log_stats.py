@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
-'''T12. Log stats.
+'''Task 15's module.
 '''
 from pymongo import MongoClient
 
 
-def print_nginx_logs():
-    '''Provides some stats about Nginx logs stored in MongoDB.
+def print_nginx_request_logs(nginx_collection):
+    '''Prints stats about Nginx request logs.
     '''
-    client = MongoClient('mongodb://127.0.0.1:27017')
-    nginx_collection = client.logs.nginx
     print('{} logs'.format(nginx_collection.count_documents({})))
     print('Methods:')
     methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
     for method in methods:
-        method_count = len(list(nginx_collection.find({'method': method})))
-        print('\tmethod {}: {}'.format(method, method_count))
-    statusChecks_count = len(list(
+        req_count = len(list(nginx_collection.find({'method': method})))
+        print('\tmethod {}: {}'.format(method, req_count))
+    status_checks_count = len(list(
         nginx_collection.find({'method': 'GET', 'path': '/status'})
     ))
-    print('{} status check'.format(statusChecks_count))
+    print('{} status check'.format(status_checks_count))
+
+
+def print_top_ips(server_collection):
+    '''Prints statistics about the top 10 HTTP IPs in a collection.
+    '''
     print('IPs:')
-    sorted_ips = nginx_collection.aggregate(
+    request_logs = server_collection.aggregate(
         [
             {
                 '$group': {'_id': "$ip", 'totalRequests': {'$sum': 1}}
@@ -33,10 +36,19 @@ def print_nginx_logs():
             },
         ]
     )
-    for sorted_ip in sorted_ips:
-        ip = sorted_ip['_id']
-        ip_count = sorted_ip['totalRequests']
-        print('\t{}: {}'.format(ip, ip_count))
+    for request_log in request_logs:
+        ip = request_log['_id']
+        ip_requests_count = request_log['totalRequests']
+        print('\t{}: {}'.format(ip, ip_requests_count))
+
+
+def run():
+    '''Provides some stats about Nginx logs stored in MongoDB.
+    '''
+    client = MongoClient('mongodb://127.0.0.1:27017')
+    print_nginx_request_logs(client.logs.nginx)
+    print_top_ips(client.logs.nginx)
+
 
 if __name__ == '__main__':
-    print_nginx_logs()
+    run()
