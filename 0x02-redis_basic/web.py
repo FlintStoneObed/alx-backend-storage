@@ -1,68 +1,79 @@
 #!/usr/bin/env python3
 
-import redis
 import requests
-from typing import Callable
-import functools
+import cachetools
 
-# Create a Redis client
-redis_client = redis.Redis()
-
-def cache_with_expiration(expiration: int) -> Callable[[Callable[..., str]], Callable[..., str]]:
-    """
-    Decorator to cache the result of a function call with an expiration time in Redis.
-
-    Args:
-        expiration: The expiration time in seconds for the cache.
-
-    Returns:
-        A decorator that caches the result of the decorated function.
-    """
-    def decorator(func: Callable[..., str]) -> Callable[..., str]:
-        @functools.wraps(func)
-        def wrapper(url: str) -> str:
-            key = f"cache:{url}"
-            cached_result = redis_client.get(key)
-            if cached_result:
-                return cached_result.decode('utf-8')
-            result = func(url)
-            redis_client.setex(key, expiration, result)
-            return result
-        return wrapper
-    return decorator
-
-def count_accesses(func: Callable[..., str]) -> Callable[..., str]:
-    """
-    Decorator to count the number of times a URL is accessed.
-
-    Args:
-        func: The function to be decorated.
-
-    Returns:
-        A decorator that increments the access count for the URL in Redis.
-    """
-    @functools.wraps(func)
-    def wrapper(url: str) -> str:
-        count_key = f"count:{url}"
-        redis_client.incr(count_key)
-        return func(url)
-    return wrapper
-
-@cache_with_expiration(10)
-@count_accesses
 def get_page(url: str) -> str:
     """
-    Fetches the HTML content of a given URL.
-
-    This function uses the requests library to retrieve the HTML content of the specified URL. 
-    It is decorated to cache the result for 10 seconds and track the number of accesses.
-
+    This function retrieves the HTML content of a given URL and caches the result for 10 seconds.
+    
     Args:
-        url: The URL to fetch.
-
+    url (str): The URL to retrieve the HTML content from.
+    
     Returns:
-        The HTML content of the URL as a string.
+    str: The HTML content of the given URL.
     """
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.text
+    
+    # Create a cache with a TTL (time to live) of 10 seconds
+    cache = cachetools.TTLCache(maxsize=100, ttl=10)
+    
+    # Check if the URL is already in the cache
+    if url in cache:
+        # If it is, return the cached result and increment the access count
+        result = cache[url]
+        cache[url] = result
+        cache['count:{}'.format(url)] = cache.get('count:{}'.format(url), 0) + 1
+        return result
+else:
+        # If not, retrieve the HTML content using requests
+        result = requests.get(url).text
+        
+        # Cache the result and set the access count to 1
+        cache[url] = result
+        cache['count:{}'.format(url)] = 1
+        
+        # Return the HTML content
+        return result
+
+# Bonus: Implementing the use case with decorators
+
+def cache_result(ttl=10):
+ """
+    This decorator caches the result of a function for a given TTL (time to live).
+    
+    Args:
+    ttl (int): The time to live in seconds.
+    
+    Returns:
+    function: The decorated function.
+    """
+    
+    def decorator(function):
+        cache = cachetools.TTLCache(maxsize=100, ttl=ttl)
+        
+        def wrapper(*args, **kwargs):
+            key = str(args) + str(kwargs)
+            if key in cache:
+                return cache[key]
+            else:
+                result = function(*args, **kwargs)
+                cache[key] = result
+                return result
+        
+        return wrapper
+    
+    return decorator
+
+@cache_result(ttl=10)
+def get_page_with_decorator(url: str) -> str:
+    """
+    This function retrieves the HTML content of a given URL and caches the result for 10 seconds using a decorator.
+    
+    Args:
+    url (str): The URL to retrieve the HTML content from.
+    
+    Returns:
+    str: The HTML content of the given URL.
+    """
+    
+    return requests.get(url).text
