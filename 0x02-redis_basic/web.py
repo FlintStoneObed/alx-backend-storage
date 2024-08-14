@@ -1,79 +1,24 @@
 #!/usr/bin/env python3
-
+'''A module with tools for request caching and tracking.
+'''
+import redis
 import requests
-import cachetools
+from datetime import timedelta
+
 
 def get_page(url: str) -> str:
-    """
-    This function retrieves the HTML content of a given URL and caches the result for 10 seconds.
-    
-    Args:
-    url (str): The URL to retrieve the HTML content from.
-    
-    Returns:
-    str: The HTML content of the given URL.
-    """
-    
-    # Create a cache with a TTL (time to live) of 10 seconds
-    cache = cachetools.TTLCache(maxsize=100, ttl=10)
-    
-    # Check if the URL is already in the cache
-    if url in cache:
-        # If it is, return the cached result and increment the access count
-        result = cache[url]
-        cache[url] = result
-        cache['count:{}'.format(url)] = cache.get('count:{}'.format(url), 0) + 1
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    if url is None or len(url.strip()) == 0:
+        return ''
+    redis_store = redis.Redis()
+    res_key = 'result:{}'.format(url)
+    req_key = 'count:{}'.format(url)
+    result = redis_store.get(res_key)
+    if result is not None:
+        redis_store.incr(req_key)
         return result
-else:
-        # If not, retrieve the HTML content using requests
-        result = requests.get(url).text
-        
-        # Cache the result and set the access count to 1
-        cache[url] = result
-        cache['count:{}'.format(url)] = 1
-        
-        # Return the HTML content
-        return result
-
-# Bonus: Implementing the use case with decorators
-
-def cache_result(ttl=10):
- """
-    This decorator caches the result of a function for a given TTL (time to live).
-    
-    Args:
-    ttl (int): The time to live in seconds.
-    
-    Returns:
-    function: The decorated function.
-    """
-    
-    def decorator(function):
-        cache = cachetools.TTLCache(maxsize=100, ttl=ttl)
-        
-        def wrapper(*args, **kwargs):
-            key = str(args) + str(kwargs)
-            if key in cache:
-                return cache[key]
-            else:
-                result = function(*args, **kwargs)
-                cache[key] = result
-                return result
-        
-        return wrapper
-    
-    return decorator
-
-@cache_result(ttl=10)
-def get_page_with_decorator(url: str) -> str:
-    """
-    This function retrieves the HTML content of a given URL and caches the result for 10 seconds using a decorator.
-    
-    Args:
-    url (str): The URL to retrieve the HTML content from.
-    
-    Returns:
-    str: The HTML content of the given URL.
-    """
-    
-    return requests.get(url).text
+    result = requests.get(url).content.decode('utf-8')
+    redis_store.setex(res_key, timedelta(seconds=10), result)
+    return result
